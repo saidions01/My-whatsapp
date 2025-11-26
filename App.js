@@ -3,7 +3,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import AuthenticationApp from './components/AuthenticationApp';
 
 import Home from './pages/Home';
-
+import Chat from './pages/Chat';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
@@ -17,6 +17,8 @@ export default function App() {
             <Stack.Navigator screenOptions={{ headerShown: false }}>
               <Stack.Screen name="Auth" component={AuthenticationApp} />
               <Stack.Screen name="Home" component={Home} />
+              <Stack.Screen name="Chat" component={Chat} />
+
             </Stack.Navigator>
           </NavigationContainer>
         </AuthProvider>

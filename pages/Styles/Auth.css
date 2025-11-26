@@ -70,7 +70,7 @@
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
   border-radius: 16px;
-  padding: 40px 30px;
+  padding: 5px 30px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
@@ -96,7 +96,7 @@
 
 .auth-input {
   width: 100%;
-  padding: 16px 20px;
+  padding: 10px 15px;
   border: 2px solid #e1e5e9;
   border-radius: 8px;
   font-size: 16px;

@@ -67,7 +67,7 @@ export default function NewUser({ navigation }) {
     <SafeAreaView style={styles.container}>
   
         <View style={styles.formContainer}>
-          <Text style={styles.title}>Create an Account</Text>
+          <Text style={styles.title}>Add a Contact</Text>
 
           {/* Name */}
           <View style={styles.inputContainer}>
@@ -116,52 +116,14 @@ export default function NewUser({ navigation }) {
             />
           </View>
 
-          {/* Password */}
-          <View style={styles.inputContainer}>
-            <MaterialIcons name="lock" size={24} color="#666" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              secureTextEntry={secureTextEntry}
-              value={formData.password}
-              onChangeText={(text) => setFormData({ ...formData, password: text })}
-            />
-            <TouchableOpacity onPress={() => setSecureTextEntry(!secureTextEntry)} style={styles.eyeIcon}>
-              <MaterialIcons
-                name={secureTextEntry ? "visibility-off" : "visibility"}
-                size={24}
-                color="#666"
-              />
-            </TouchableOpacity>
-          </View>
-
-          {/* Confirm Password */}
-          <View style={styles.inputContainer}>
-            <MaterialIcons name="lock" size={24} color="#666" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Confirm Password"
-              secureTextEntry={secureTextEntry2}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-            />
-            <TouchableOpacity onPress={() => setSecureTextEntry2(!secureTextEntry2)} style={styles.eyeIcon}>
-              <MaterialIcons
-                name={secureTextEntry2 ? "visibility-off" : "visibility"}
-                size={24}
-                color="#666"
-              />
-            </TouchableOpacity>
-          </View>
+          
 
           {/* Buttons */}
           <TouchableOpacity style={styles.loginButton} onPress={handleSignup}>
-            <Text style={styles.loginButtonText}>Sign Up</Text>
+            <Text style={styles.loginButtonText}>Add Contact</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.loginButton} onPress={() => navigation.goBack()}>
-            <Text style={styles.loginButtonText}>Go Back</Text>
-          </TouchableOpacity>
+     
         </View>
     
     </SafeAreaView>
@@ -172,6 +134,8 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   image: { flex: 1, justifyContent: "center", width: "100%", height: "100%" },
   formContainer: {
+    marginTop: 50,
+    padding: 20,
     marginHorizontal: 20,
     backgroundColor: "rgba(255, 255, 255, 0.9)",
     borderRadius: 20,
