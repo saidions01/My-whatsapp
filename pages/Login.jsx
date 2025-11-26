@@ -18,7 +18,7 @@ export default function Login({ onSwitchToSignup, navigation }) {
       await login(email, password);
       
       console.log('Login successful');
-      navigation.navigate('Home'); // optional if using React Navigation
+      navigation.navigate('Home'); 
     } catch (error) {
       setError('Failed to login: ' + error.message);
     } finally {

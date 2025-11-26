@@ -7,7 +7,7 @@ import {
   FlatList,
   StyleSheet,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons"; // for icons
+import { Ionicons } from "@expo/vector-icons"; 
 import { auth, database } from "../config/firebase";
 import { ref, onValue, off, push, serverTimestamp } from "firebase/database";
 
