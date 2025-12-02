@@ -14,6 +14,7 @@ import { auth, database } from '../config/firebase';
 import { ref, onValue, off, update, remove } from 'firebase/database';
 import { signOut } from 'firebase/auth';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker'; // Import ImagePicker
 
 export default function Profile({ navigation }) {
   const [userData, setUserData] = useState(null);
@@ -21,6 +22,7 @@ export default function Profile({ navigation }) {
   const [name, setName] = useState('');
   const [pseudo, setPseudo] = useState('');
   const [phone, setPhone] = useState('');
+  const [profileImage, setProfileImage] = useState(''); // State for profile image
   const user = auth.currentUser;
 
   useEffect(() => {
@@ -33,6 +35,7 @@ export default function Profile({ navigation }) {
         setName(data.name);
         setPseudo(data.pseudo);
         setPhone(data.phone);
+        setProfileImage(data.profileImage); // Set initial profile image
       });
 
       return () => off(userRef);
@@ -59,6 +62,7 @@ export default function Profile({ navigation }) {
         name,
         pseudo,
         phone,
+        profileImage, // Include profile image in update
       });
       setModalVisible(false);
     } catch (error) {
@@ -95,6 +99,28 @@ export default function Profile({ navigation }) {
     }
   };
 
+  const pickImage = async () => {
+    // Request permission to access media library
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (permissionResult.granted === false) {
+      Alert.alert('Permission to access camera roll is required!');
+      return;
+    }
+
+    // Open image picker
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setProfileImage(result.assets[0].uri); // Update profile image state
+    }
+  };
+
   if (!userData) {
     return (
       <View style={styles.center}>
@@ -108,14 +134,14 @@ export default function Profile({ navigation }) {
     <View style={styles.container}>
       {/* Profile Card */}
       <View style={styles.card}>
-        <Image
-          source={{
-            uri:
-              userData?.profileImage ||
-              'https://cdn-icons-png.flaticon.com/512/149/149071.png',
-          }}
-          style={styles.profileImage}
-        />
+        <TouchableOpacity onPress={pickImage}>
+          <Image
+            source={{
+              uri: profileImage || 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
+            }}
+            style={styles.profileImage}
+          />
+        </TouchableOpacity>
 
         <Text style={styles.name}>{userData.name || 'Unnamed User'}</Text>
         <Text style={styles.pseudo}>{userData.pseudo || 'No Pseudo'}</Text>
@@ -130,14 +156,13 @@ export default function Profile({ navigation }) {
           {new Date(userData.createdAt).toLocaleDateString()}
         </Text>
 
-
-          <View style={{ flexDirection: 'row' }}>
-        <TouchableOpacity style={styles.editBtn} onPress={() => setModalVisible(true)}>
-          <Text style={styles.editText}>Edit Profile</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.deleteBtn} onPress={confirmDelete}>
-          <Text style={styles.deleteText}>Delete Profile</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row' }}>
+          <TouchableOpacity style={styles.editBtn} onPress={() => setModalVisible(true)}>
+            <Text style={styles.editText}>Edit Profile</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.deleteBtn} onPress={confirmDelete}>
+            <Text style={styles.deleteText}>Delete Profile</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -192,6 +217,9 @@ export default function Profile({ navigation }) {
   );
 }
 
+/* ------------------------ STYLES ------------------------ */
+
+// ... existing styles ...
 /* ------------------------ STYLES ------------------------ */
 
 const styles = StyleSheet.create({

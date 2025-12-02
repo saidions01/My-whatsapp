@@ -9,13 +9,13 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons"; 
 import { auth, database } from "../config/firebase";
-import { ref, onValue, off, push, serverTimestamp } from "firebase/database";
+import { ref, onValue, off, push, serverTimestamp, set, remove } from "firebase/database";
+import MessageReaction from '../components/MessageReaction'; // Import the new component
 
 export default function Chat({ route, navigation }) {
   const { chatId } = route.params;
   const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState("");
-
+  const [newMessage, setNewMessage] = useState({});
   const flatListRef = useRef(null);
   const user = auth.currentUser;
 
@@ -44,16 +44,26 @@ export default function Chat({ route, navigation }) {
   }, [chatId]);
 
   const sendMessage = async () => {
-    if (!newMessage.trim()) return;
+    if (!newMessage.text?.trim()) return;
 
     const messagesRef = ref(database, `chats/${chatId}/messages`);
     await push(messagesRef, {
-      text: newMessage,
+      text: newMessage.text,
       sender: user.uid,
       createdAt: serverTimestamp(),
+      reactions: {}, // Initialize reactions as an empty object
     });
 
-    setNewMessage("");
+    setNewMessage({ text: "" });
+  };
+
+  const handleReactionChange = async (messageId, reaction) => {
+    const reactionRef = ref(database, `chats/${chatId}/messages/${messageId}/reactions/${user.uid}`);
+    if (reaction === null) {
+      await remove(reactionRef); // Remove the reaction if null
+    } else {
+      await set(reactionRef, reaction); // Set/update the reaction
+    }
   };
 
   return (
@@ -80,6 +90,12 @@ export default function Chat({ route, navigation }) {
         contentContainerStyle={styles.messagesList}
         renderItem={({ item }) => {
           const isMe = item.sender === user.uid;
+
+          // Defensive checks for message properties
+          const messageText = item.text || "Message not available";
+          const messageId = item.id || "unknown_id";
+          const messageReactions = item.reactions || {};
+
           return (
             <View
               style={[
@@ -97,7 +113,12 @@ export default function Chat({ route, navigation }) {
               )}
 
               <View style={[styles.messageBubble, isMe ? styles.myBubble : styles.theirBubble]}>
-                <Text style={styles.messageText}>{item.text}</Text>
+                <Text style={styles.messageText}>{messageText}</Text>
+                <MessageReaction 
+                  messageId={messageId} 
+                  currentReaction={messageReactions[user.uid]} 
+                  onReactionChange={handleReactionChange} 
+                />
               </View>
             </View>
           );
@@ -108,8 +129,8 @@ export default function Chat({ route, navigation }) {
       <View style={styles.inputContainer}>
         <TextInput
           placeholder="Type a message..."
-          value={newMessage}
-          onChangeText={setNewMessage}
+          value={newMessage.text}
+          onChangeText={(text) => setNewMessage({ text })}
           style={styles.input}
         />
 
