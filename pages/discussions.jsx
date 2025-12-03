@@ -7,6 +7,10 @@ import {
   StyleSheet,
   Alert,
   FlatList,
+  Modal,
+  TextInput,
+  Pressable,
+  ScrollView,
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { auth, database } from "../config/firebase";
@@ -17,6 +21,9 @@ export default function Discussions({ navigation }) {
   const [groups, setGroups] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [activeTab, setActiveTab] = useState("Users"); // 'Users' or 'Groups'
+  const [userOnlineStatus, setUserOnlineStatus] = useState({});
+  const [groupCreationModalVisible, setGroupCreationModalVisible] = useState(false);
+  const [groupName, setGroupName] = useState("");
   const currentUserID = auth.currentUser?.uid;
 
   useEffect(() => {
@@ -45,12 +52,24 @@ export default function Discussions({ navigation }) {
       }
     };
 
-    onValue(usersRef, handleUsers);
+     // Fetch online status for all users
+     const onlineStatusRef = ref(database, "users");
+     const unsubscribeOnlineStatus = onValue(onlineStatusRef, (snapshot) => {
+       const usersData = snapshot.val() || {};
+       const statusMap = {};
+       Object.entries(usersData).forEach(([userId, userData]) => {
+         statusMap[userId] = userData.online === true;
+       });
+       setUserOnlineStatus(statusMap);
+     });
+
+     onValue(usersRef, handleUsers);
     onValue(groupsRef, handleGroups);
 
     return () => {
       off(usersRef, "value", handleUsers);
       off(groupsRef, "value", handleGroups);
+      unsubscribeOnlineStatus();
     };
   }, [currentUserID]);
 
@@ -86,18 +105,23 @@ export default function Discussions({ navigation }) {
   const handleLongPress = (item) => {
     if (selectedUsers.find((u) => u.id === item.id)) {
       setSelectedUsers(selectedUsers.filter((u) => u.id !== item.id));
-    } else if (selectedUsers.length < 2) {
+    } else {
       setSelectedUsers([...selectedUsers, item]);
-      if (selectedUsers.length === 1) {
-        createGroupChat([...selectedUsers, item]);
-      }
     }
   };
 
-  const createGroupChat = async (members) => {
+  const createGroupChat = async () => {
+    if (!groupName.trim()) {
+      Alert.alert("Error", "Please enter a group name");
+      return;
+    }
+    if (selectedUsers.length < 2) {
+      Alert.alert("Error", "Please select at least 2 contacts");
+      return;
+    }
+
     try {
-      const groupName = members.map((user) => user.name).join(", ");
-      const groupMembers = [...members.map((user) => user.id), currentUserID];
+      const groupMembers = [...selectedUsers.map((user) => user.id), currentUserID];
 
       const newGroupRef = push(ref(database, "groups"));
       await set(newGroupRef, {
@@ -108,6 +132,8 @@ export default function Discussions({ navigation }) {
       });
 
       setSelectedUsers([]);
+      setGroupName("");
+      setGroupCreationModalVisible(false);
       Alert.alert("Success", "Group chat created!");
     } catch (error) {
       Alert.alert("Error", "Failed to create group chat");
@@ -121,10 +147,20 @@ export default function Discussions({ navigation }) {
         styles.userCard,
         selectedUsers.find((u) => u.id === item.id) && styles.selectedUser,
       ]}
-      onPress={() => handlePress(item, activeTab)}
+      onPress={() => activeTab === "Users" ? handlePress(item, activeTab) : handlePress(item, activeTab)}
       onLongPress={() => activeTab === "Users" && handleLongPress(item)}
+      delayLongPress={500}
     >
       <View style={styles.userInfo}>
+        {activeTab === "Users" && (
+          <View style={styles.checkboxContainer}>
+            {selectedUsers.find((u) => u.id === item.id) ? (
+              <MaterialIcons name="check-box" size={24} color="#3478f6" />
+            ) : (
+              <MaterialIcons name="check-box-outline-blank" size={24} color="#ccc" />
+            )}
+          </View>
+        )}
         <Image
           source={{
             uri:
@@ -133,15 +169,15 @@ export default function Discussions({ navigation }) {
           }}
           style={styles.profileImage}
         />
-        <View>
+        <View style={styles.userDetails}>
           <Text style={styles.userName}>{item.name}</Text>
           <Text style={styles.subText}>
             {activeTab === "Users"
-              ? "Tap to chat • Long-press to group"
+              ? "Tap to chat • Long-press to select"
               : "Group chat"}
           </Text>
         </View>
-        {item.isActive && <View style={styles.activeDot} />}
+        {userOnlineStatus[item.id] && <View style={styles.activeDot} />}
       </View>
     </TouchableOpacity>
   );
@@ -152,7 +188,10 @@ export default function Discussions({ navigation }) {
       <View style={styles.tabContainer}>
         <TouchableOpacity
           style={[styles.tabButton, activeTab === "Users" && styles.activeTab]}
-          onPress={() => setActiveTab("Users")}
+          onPress={() => {
+            setActiveTab("Users");
+            setSelectedUsers([]);
+          }}
         >
           <Text
             style={[styles.tabText, activeTab === "Users" && styles.activeTabText]}
@@ -162,7 +201,10 @@ export default function Discussions({ navigation }) {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tabButton, activeTab === "Groups" && styles.activeTab]}
-          onPress={() => setActiveTab("Groups")}
+          onPress={() => {
+            setActiveTab("Groups");
+            setSelectedUsers([]);
+          }}
         >
           <Text
             style={[styles.tabText, activeTab === "Groups" && styles.activeTabText]}
@@ -180,12 +222,80 @@ export default function Discussions({ navigation }) {
         contentContainerStyle={{ paddingBottom: 100 }}
       />
 
-      {/* Floating Reload Button */}
+      {/* Floating Buttons */}
       {activeTab === "Users" && (
-        <TouchableOpacity style={styles.fab} onPress={reloadUsers}>
-          <MaterialIcons name="refresh" size={28} color="#fff" />
-        </TouchableOpacity>
+        <>
+          <TouchableOpacity style={styles.fab} onPress={reloadUsers}>
+            <MaterialIcons name="refresh" size={28} color="#fff" />
+          </TouchableOpacity>
+          {selectedUsers.length > 0 && (
+            <TouchableOpacity 
+              style={[styles.fab, styles.fabCreateGroup]}
+              onPress={() => setGroupCreationModalVisible(true)}
+            >
+              <MaterialIcons name="group-add" size={28} color="#fff" />
+            </TouchableOpacity>
+          )}
+        </>
       )}
+
+      {/* Group Creation Modal */}
+      <Modal visible={groupCreationModalVisible} transparent animationType="slide">
+        <Pressable style={styles.modalOverlay} onPress={() => setGroupCreationModalVisible(false)}>
+          <View style={styles.groupCreationModal}>
+            <Text style={styles.modalTitle}>Create Group</Text>
+            
+            <TextInput
+              style={styles.groupNameInput}
+              placeholder="Enter group name"
+              value={groupName}
+              onChangeText={setGroupName}
+            />
+
+            <Text style={styles.selectedCountText}>
+              {selectedUsers.length} contact{selectedUsers.length !== 1 ? 's' : ''} selected
+            </Text>
+
+            <ScrollView style={styles.selectedContactsList}>
+              {selectedUsers.map((user) => (
+                <View key={user.id} style={styles.selectedContactItem}>
+                  <Image
+                    source={{
+                      uri: user.profileImage || "https://cdn-icons-png.flaticon.com/512/149/149071.png",
+                    }}
+                    style={styles.selectedContactImage}
+                  />
+                  <Text style={styles.selectedContactName}>{user.name}</Text>
+                  <TouchableOpacity 
+                    onPress={() => setSelectedUsers(selectedUsers.filter(u => u.id !== user.id))}
+                    style={styles.removeContactBtn}
+                  >
+                    <MaterialIcons name="close" size={20} color="#999" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+
+            <View style={styles.modalButtonsContainer}>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  setGroupCreationModalVisible(false);
+                  setGroupName("");
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.createButton]}
+                onPress={createGroupChat}
+              >
+                <Text style={styles.createButtonText}>Create Group</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -224,8 +334,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#e3f2fd",
   },
   userInfo: { flexDirection: "row", alignItems: "center" },
+  checkboxContainer: {
+    marginRight: 10,
+  },
   profileImage: { width: 50, height: 50, borderRadius: 25 },
-  userName: { marginLeft: 15, fontSize: 16 },
+  userDetails: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  userName: { fontSize: 16, fontWeight: "600" },
   activeDot: {
     width: 10,
     height: 10,
@@ -254,4 +371,90 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
   },
+  fabCreateGroup: {
+    bottom: 100,
+    backgroundColor: "#3478f6",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    justifyContent: "flex-end",
+  },
+  groupCreationModal: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: "85%",
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 16,
+  },
+  groupNameInput: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 16,
+  },
+  selectedCountText: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 12,
+  },
+  selectedContactsList: {
+    maxHeight: 250,
+    marginBottom: 16,
+  },
+  selectedContactItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  selectedContactImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+  },
+  selectedContactName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  removeContactBtn: {
+    padding: 4,
+  },
+  modalButtonsContainer: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelButton: {
+    backgroundColor: "#f0f0f0",
+  },
+  cancelButtonText: {
+    color: "#333",
+    fontWeight: "600",
+  },
+  createButton: {
+    backgroundColor: "#3478f6",
+  },
+  createButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+  },
 });
+
