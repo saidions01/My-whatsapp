@@ -1,72 +1,67 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 
 const TypingIndicator = () => {
-  const [dot1] = useState(new Animated.Value(0));
-  const [dot2] = useState(new Animated.Value(0));
-  const [dot3] = useState(new Animated.Value(0));
+  const animations = useRef([
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+  ]).current;
 
   useEffect(() => {
-    const animateDots = () => {
+    const animate = (index) => {
       Animated.sequence([
-        Animated.parallel([
-          Animated.timing(dot1, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: false,
-          }),
-        ]),
-        Animated.parallel([
-          Animated.timing(dot2, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: false,
-          }),
-        ]),
-        Animated.parallel([
-          Animated.timing(dot3, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: false,
-          }),
-        ]),
-        Animated.parallel([
-          Animated.timing(dot1, {
-            toValue: 0,
-            duration: 300,
-            useNativeDriver: false,
-          }),
-          Animated.timing(dot2, {
-            toValue: 0,
-            duration: 300,
-            useNativeDriver: false,
-          }),
-          Animated.timing(dot3, {
-            toValue: 0,
-            duration: 300,
-            useNativeDriver: false,
-          }),
-        ]),
-      ]).start(() => animateDots());
+        Animated.timing(animations[index], {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(animations[index], {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        // Chain to next dot
+        const nextIndex = (index + 1) % 3;
+        animate(nextIndex);
+      });
     };
 
-    animateDots();
-  }, [dot1, dot2, dot3]);
+    // Start the chain
+    animate(0);
 
-  const dotOpacity = (dot) => ({
-    opacity: dot.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.3, 1],
-    }),
-  });
+    return () => {
+      animations.forEach(anim => anim.stopAnimation());
+    };
+  }, []);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>{`${""}`}</Text>
+      <Text style={styles.label}>typing...</Text>
       <View style={styles.dotsContainer}>
-        <Animated.Text style={[styles.dot, dotOpacity(dot1)]}>●</Animated.Text>
-        <Animated.Text style={[styles.dot, dotOpacity(dot2)]}>●</Animated.Text>
-        <Animated.Text style={[styles.dot, dotOpacity(dot3)]}>●</Animated.Text>
+        {animations.map((anim, index) => (
+          <Animated.Text 
+            key={index}
+            style={[
+              styles.dot,
+              {
+                opacity: anim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.3, 1],
+                }),
+                transform: [{
+                  translateY: anim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -3],
+                  }),
+                }],
+              },
+            ]}
+          >
+            ●
+          </Animated.Text>
+        ))}
       </View>
     </View>
   );
@@ -76,22 +71,29 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 6,
     paddingHorizontal: 10,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    marginLeft: 50,
+    marginBottom: 5,
   },
   label: {
     fontSize: 12,
-    color: '#999',
-    marginRight: 5,
+    color: '#666',
+    marginRight: 6,
   },
   dotsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   dot: {
-    fontSize: 16,
-    color: '#999',
-    marginHorizontal: 2,
+    fontSize: 8,
+    color: '#666',
+    marginHorizontal: 1,
   },
 });
 

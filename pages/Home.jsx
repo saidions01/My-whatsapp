@@ -3,7 +3,8 @@ import { StyleSheet } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import Profile from "./Profile";
 import Discussions from "./discussions";
-import NewUser from "./NewUser";
+import Contacts from "./Contacts";
+
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 
 const Tab = createBottomTabNavigator();
@@ -28,15 +29,19 @@ export default function Home() {
           ),
         }}
       />
-      <Tab.Screen
-        name="Add User"
-        component={NewUser}
+
+
+        <Tab.Screen
+        name="Contacts"
+        component={Contacts}
         options={{
           tabBarIcon: ({ color, size }) => (
-            <MaterialIcons name="person-add" color={color} size={size} />
+            <MaterialIcons name="list" color={color} size={size} />
           ),
         }}
       />
+   
+     
       <Tab.Screen
         name="Profile"
         component={Profile}

@@ -2,6 +2,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getDatabase } from "firebase/database";
+import { getStorage } from 'firebase/storage';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -84,7 +85,16 @@ export const getFirebaseStatus = () => ({
     database: !!database
   }
 });
+const storage = getStorage(app); // Add this
+
+
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = 'https://txxpelqugtnztuywpocq.supabase.co';
+const supabaseAnonKey ='sb_publishable_VXc3IwCBsFf-SqAkDHXi6g_QPX1P4pj'
+
+ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Export Firebase services
-export { auth, database };
+export { auth, database, storage, supabase  };
 export default app;

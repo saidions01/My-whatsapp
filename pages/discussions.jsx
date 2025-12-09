@@ -14,33 +14,113 @@ import {
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { auth, database } from "../config/firebase";
-import { ref, onValue, off, push, set, get } from "firebase/database";
+import { ref, onValue, off, push, set, get, query, orderByChild } from "firebase/database";
 
 export default function Discussions({ navigation }) {
-  const [users, setUsers] = useState([]);
+  const [chatContacts, setChatContacts] = useState([]);
   const [groups, setGroups] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
-  const [activeTab, setActiveTab] = useState("Users"); // 'Users' or 'Groups'
+  const [activeTab, setActiveTab] = useState("Chats"); // 'Chats' or 'Groups'
   const [userOnlineStatus, setUserOnlineStatus] = useState({});
   const [groupCreationModalVisible, setGroupCreationModalVisible] = useState(false);
   const [groupName, setGroupName] = useState("");
+  const [loading, setLoading] = useState(true);
   const currentUserID = auth.currentUser?.uid;
 
   useEffect(() => {
     if (!currentUserID) return;
 
-    const usersRef = ref(database, "users");
     const groupsRef = ref(database, "groups");
 
-    const handleUsers = (snapshot) => {
-      const usersData = snapshot.val();
-      if (usersData) {
-        const usersList = Object.entries(usersData)
-          .filter(([id]) => id !== currentUserID)
-          .map(([id, data]) => ({ id, ...data }));
-        setUsers(usersList);
+    // Fetch online status for all users
+    const onlineStatusRef = ref(database, "users");
+    const unsubscribeOnlineStatus = onValue(onlineStatusRef, (snapshot) => {
+      const usersData = snapshot.val() || {};
+      const statusMap = {};
+      Object.entries(usersData).forEach(([userId, userData]) => {
+        statusMap[userId] = userData.online === true;
+      });
+      setUserOnlineStatus(statusMap);
+    });
+
+    // Fetch user chats
+   // In your Discussions.js, update the fetchChatContacts function:
+const fetchChatContacts = async () => {
+  try {
+    setLoading(true);
+    
+    // Get all chats from database
+    const chatsRef = ref(database, "chats");
+    const chatsSnapshot = await get(chatsRef);
+    const chatsData = chatsSnapshot.val() || {};
+
+    // Get all users to get their details
+    const usersRef = ref(database, "users");
+    const usersSnapshot = await get(usersRef);
+    const allUsers = usersSnapshot.val() || {};
+
+    const contactsWithChats = [];
+
+    // Loop through all chats
+    Object.entries(chatsData).forEach(([chatId, chatData]) => {
+      // Check if this chat involves the current user
+      if (chatId.includes(currentUserID)) {
+        // Extract the other user's ID from chat ID
+        const [id1, id2] = chatId.split('-');
+        const otherUserId = id1 === currentUserID ? id2 : id1;
+        
+        // Get the other user's data
+        const otherUser = allUsers[otherUserId];
+        
+        if (otherUser) {
+          // Check if we already have this contact in the list
+          const existingIndex = contactsWithChats.findIndex(c => c.id === otherUserId);
+          
+          if (existingIndex === -1) {
+            // DEBUG: Log the data
+            console.log('Found contact:', {
+              id: otherUserId,
+              name: otherUser.name,
+              email: otherUser.email,
+              isCurrentUser: otherUserId === currentUserID
+            });
+            
+            // Add contact to list
+            contactsWithChats.push({
+              id: otherUserId,
+              ...otherUser,
+              chatId: chatId,
+              lastMessage: getLastMessage(chatData.messages),
+              lastMessageTime: getLastMessageTime(chatData.messages)
+            });
+          }
+        } else {
+          console.log('No user data found for ID:', otherUserId);
+        }
       }
-    };
+    });
+
+    // DEBUG: Log all contacts
+    console.log('All contacts found:', contactsWithChats.map(c => ({
+      id: c.id,
+      name: c.name,
+      email: c.email
+    })));
+
+    // Sort by last message time (most recent first)
+    contactsWithChats.sort((a, b) => {
+      return (b.lastMessageTime || 0) - (a.lastMessageTime || 0);
+    });
+
+    setChatContacts(contactsWithChats);
+    setLoading(false);
+  } catch (error) {
+    console.error("Error fetching chat contacts:", error);
+    setLoading(false);
+  }
+};
+
+
 
     const handleGroups = (snapshot) => {
       const groupsData = snapshot.val();
@@ -52,51 +132,63 @@ export default function Discussions({ navigation }) {
       }
     };
 
-     // Fetch online status for all users
-     const onlineStatusRef = ref(database, "users");
-     const unsubscribeOnlineStatus = onValue(onlineStatusRef, (snapshot) => {
-       const usersData = snapshot.val() || {};
-       const statusMap = {};
-       Object.entries(usersData).forEach(([userId, userData]) => {
-         statusMap[userId] = userData.online === true;
-       });
-       setUserOnlineStatus(statusMap);
-     });
-
-     onValue(usersRef, handleUsers);
+    fetchChatContacts();
     onValue(groupsRef, handleGroups);
 
     return () => {
-      off(usersRef, "value", handleUsers);
       off(groupsRef, "value", handleGroups);
       unsubscribeOnlineStatus();
     };
   }, [currentUserID]);
 
-  const reloadUsers = async () => {
-    try {
-      const usersSnapshot = await get(ref(database, "users"));
-      const usersData = usersSnapshot.val();
-      if (usersData) {
-        const usersList = Object.entries(usersData)
-          .filter(([id]) => id !== currentUserID)
-          .map(([id, data]) => ({ id, ...data }));
-        setUsers(usersList);
-        Alert.alert("Success", "Users reloaded!");
-      }
-    } catch (error) {
-      console.error(error);
-      Alert.alert("Error", "Failed to reload users");
+  // Helper function to get the last message from chat
+  const getLastMessage = (messages) => {
+    if (!messages) return "No messages yet";
+    
+    const messageArray = Object.values(messages);
+    if (messageArray.length === 0) return "No messages yet";
+    
+    // Sort by timestamp (most recent first)
+    messageArray.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    
+    const lastMsg = messageArray[0];
+    return lastMsg.text || "📷 Image" || "📁 File";
+  };
+
+  // Helper function to get last message time
+  const getLastMessageTime = (messages) => {
+    if (!messages) return 0;
+    
+    const messageArray = Object.values(messages);
+    if (messageArray.length === 0) return 0;
+    
+    messageArray.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return messageArray[0].createdAt || 0;
+  };
+
+  // Format time for display
+  const formatTime = (timestamp) => {
+    if (!timestamp) return "";
+    
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffInHours = (now - date) / (1000 * 60 * 60);
+    
+    if (diffInHours < 24) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } else if (diffInHours < 48) {
+      return "Yesterday";
+    } else {
+      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
     }
   };
 
-  const generateDiscussionID = (id1, id2) =>
-    id1 <= id2 ? `${id1}-${id2}` : `${id2}-${id1}`;
-
   const handlePress = (item, type) => {
-    if (type === "Users") {
-      const chatId = generateDiscussionID(currentUserID, item.id);
-      navigation.navigate("Chat", { chatId });
+    if (type === "Chats") {
+      navigation.navigate("Chat", { 
+        chatId: item.chatId,
+        contactName: item.name 
+      });
     } else {
       navigation.navigate("Chat", { chatId: item.id });
     }
@@ -141,18 +233,70 @@ export default function Discussions({ navigation }) {
     }
   };
 
+  const reloadChats = async () => {
+    if (!currentUserID) return;
+    
+    try {
+      setLoading(true);
+      
+      // Re-fetch chats
+      const chatsRef = ref(database, "chats");
+      const chatsSnapshot = await get(chatsRef);
+      const chatsData = chatsSnapshot.val() || {};
+
+      const usersRef = ref(database, "users");
+      const usersSnapshot = await get(usersRef);
+      const allUsers = usersSnapshot.val() || {};
+
+      const contactsWithChats = [];
+
+      Object.entries(chatsData).forEach(([chatId, chatData]) => {
+        if (chatId.includes(currentUserID)) {
+          const [id1, id2] = chatId.split('-');
+          const otherUserId = id1 === currentUserID ? id2 : id1;
+          const otherUser = allUsers[otherUserId];
+          
+          if (otherUser) {
+            const existingIndex = contactsWithChats.findIndex(c => c.id === otherUserId);
+            if (existingIndex === -1) {
+              contactsWithChats.push({
+                id: otherUserId,
+                ...otherUser,
+                chatId: chatId,
+                lastMessage: getLastMessage(chatData.messages),
+                lastMessageTime: getLastMessageTime(chatData.messages)
+              });
+            }
+          }
+        }
+      });
+
+      contactsWithChats.sort((a, b) => {
+        return (b.lastMessageTime || 0) - (a.lastMessageTime || 0);
+      });
+
+      setChatContacts(contactsWithChats);
+      setLoading(false);
+      Alert.alert("Success", "Chats refreshed!");
+    } catch (error) {
+      console.error("Error reloading chats:", error);
+      setLoading(false);
+      Alert.alert("Error", "Failed to refresh chats");
+    }
+  };
+
   const renderItem = ({ item }) => (
     <TouchableOpacity
       style={[
         styles.userCard,
         selectedUsers.find((u) => u.id === item.id) && styles.selectedUser,
       ]}
-      onPress={() => activeTab === "Users" ? handlePress(item, activeTab) : handlePress(item, activeTab)}
-      onLongPress={() => activeTab === "Users" && handleLongPress(item)}
+      onPress={() => activeTab === "Chats" ? handlePress(item, activeTab) : handlePress(item, activeTab)}
+      onLongPress={() => activeTab === "Chats" && handleLongPress(item)}
       delayLongPress={500}
     >
       <View style={styles.userInfo}>
-        {activeTab === "Users" && (
+        {activeTab === "Chats" && (
           <View style={styles.checkboxContainer}>
             {selectedUsers.find((u) => u.id === item.id) ? (
               <MaterialIcons name="check-box" size={24} color="#3478f6" />
@@ -161,42 +305,65 @@ export default function Discussions({ navigation }) {
             )}
           </View>
         )}
-        <Image
-          source={{
-            uri:
-              item.profileImage ||
-              "https://cdn-icons-png.flaticon.com/512/149/149071.png",
-          }}
-          style={styles.profileImage}
-        />
+        <View style={styles.imageContainer}>
+          <Image
+            source={{
+              uri:
+                item.profileImage ||
+                "https://cdn-icons-png.flaticon.com/512/149/149071.png",
+            }}
+            style={styles.profileImage}
+          />
+          {userOnlineStatus[item.id] && <View style={styles.activeDot} />}
+        </View>
         <View style={styles.userDetails}>
-          <Text style={styles.userName}>{item.name}</Text>
+          <View style={styles.nameRow}>
+            <Text style={styles.userName} numberOfLines={1}>
+              {item.name || "Unknown User"}
+            </Text>
+            {item.lastMessageTime && (
+              <Text style={styles.timeText}>
+                {formatTime(item.lastMessageTime)}
+              </Text>
+            )}
+          </View>
+          <Text style={styles.lastMessage} numberOfLines={1}>
+            {item.lastMessage || "Start a conversation"}
+          </Text>
           <Text style={styles.subText}>
-            {activeTab === "Users"
-              ? "Tap to chat • Long-press to select"
+            {activeTab === "Chats" 
+              ? `@${item.pseudo || "user"} • Tap to chat${selectedUsers.length > 0 ? " • Long-press to select" : ""}`
               : "Group chat"}
           </Text>
         </View>
-        {userOnlineStatus[item.id] && <View style={styles.activeDot} />}
       </View>
     </TouchableOpacity>
   );
+
+  if (loading && activeTab === "Chats") {
+    return (
+      <View style={styles.loadingContainer}>
+        <MaterialIcons name="chat" size={60} color="#ccc" />
+        <Text style={styles.loadingText}>Loading your chats...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       {/* Tab Switch */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
-          style={[styles.tabButton, activeTab === "Users" && styles.activeTab]}
+          style={[styles.tabButton, activeTab === "Chats" && styles.activeTab]}
           onPress={() => {
-            setActiveTab("Users");
+            setActiveTab("Chats");
             setSelectedUsers([]);
           }}
         >
           <Text
-            style={[styles.tabText, activeTab === "Users" && styles.activeTabText]}
+            style={[styles.tabText, activeTab === "Chats" && styles.activeTabText]}
           >
-            Users
+            Chats
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -216,16 +383,30 @@ export default function Discussions({ navigation }) {
 
       {/* List */}
       <FlatList
-        data={activeTab === "Users" ? users : groups}
+        data={activeTab === "Chats" ? chatContacts : groups}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingBottom: 100 }}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <MaterialIcons 
+              name={activeTab === "Chats" ? "chat" : "group"} 
+              size={60} 
+              color="#ccc" 
+            />
+            <Text style={styles.emptyText}>
+              {activeTab === "Chats" 
+                ? "No chats yet\nStart a conversation!"
+                : "No groups yet\nCreate or join a group!"}
+            </Text>
+          </View>
+        }
       />
 
       {/* Floating Buttons */}
-      {activeTab === "Users" && (
+      {activeTab === "Chats" && (
         <>
-          <TouchableOpacity style={styles.fab} onPress={reloadUsers}>
+          <TouchableOpacity style={styles.fab} onPress={reloadChats}>
             <MaterialIcons name="refresh" size={28} color="#fff" />
           </TouchableOpacity>
           {selectedUsers.length > 0 && (
@@ -302,6 +483,18 @@ export default function Discussions({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  loadingText: {
+    marginTop: 20,
+    fontSize: 16,
+    color: "#666",
+    textAlign: "center",
+  },
   tabContainer: {
     flexDirection: "row",
     margin: 10,
@@ -333,27 +526,60 @@ const styles = StyleSheet.create({
   selectedUser: {
     backgroundColor: "#e3f2fd",
   },
-  userInfo: { flexDirection: "row", alignItems: "center" },
+  userInfo: { 
+    flexDirection: "row", 
+    alignItems: "center" 
+  },
   checkboxContainer: {
     marginRight: 10,
   },
-  profileImage: { width: 50, height: 50, borderRadius: 25 },
+  imageContainer: {
+    position: "relative",
+  },
+  profileImage: { 
+    width: 50, 
+    height: 50, 
+    borderRadius: 25 
+  },
+  activeDot: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#4CAF50",
+    borderWidth: 2,
+    borderColor: "#fff",
+  },
   userDetails: {
     flex: 1,
     marginLeft: 10,
   },
-  userName: { fontSize: 16, fontWeight: "600" },
-  activeDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#4CAF50",
-    marginLeft: 10,
+  nameRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  userName: { 
+    fontSize: 16, 
+    fontWeight: "600",
+    flex: 1,
+    marginRight: 10,
+  },
+  timeText: {
+    fontSize: 12,
+    color: "#999",
+  },
+  lastMessage: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 2,
   },
   subText: {
     fontSize: 12,
     color: "#777",
-    marginTop: 3,
   },
   fab: {
     position: "absolute",
@@ -374,6 +600,18 @@ const styles = StyleSheet.create({
   fabCreateGroup: {
     bottom: 100,
     backgroundColor: "#3478f6",
+  },
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 100,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: "#666",
+    textAlign: "center",
+    marginTop: 10,
+    lineHeight: 24,
   },
   modalOverlay: {
     flex: 1,
@@ -457,4 +695,3 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
-
