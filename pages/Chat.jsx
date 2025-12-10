@@ -19,7 +19,6 @@ import { auth, database, supabase } from "../config/firebase";
 import { ref, onValue, set, push, serverTimestamp, off } from "firebase/database";
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import { uploadProfileImage } from '../config/supabase';
 import MessageReaction from '../components/MessageReaction';
 import TypingIndicator from '../components/TypingIndicator';
 
@@ -57,7 +56,8 @@ export default function Chat({ route, navigation }) {
 
     const otherUserTypingRef = ref(database, `users/${otherUserId}/typing`);
     const unsubscribeTyping = onValue(otherUserTypingRef, (snapshot) => {
-      setOtherUserTyping(snapshot.val() === true);
+      const isTyping = snapshot.val() === true;
+      setOtherUserTyping(isTyping);
     });
 
     const otherUserProfileRef = ref(database, `users/${otherUserId}`);
@@ -124,8 +124,14 @@ export default function Chat({ route, navigation }) {
       return;
     }
 
+    // Stop typing indicator
     const userTypingRef = ref(database, `users/${user.uid}/typing`);
     await set(userTypingRef, false);
+    
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
 
     const messagesRef = ref(database, `chats/${chatId}/messages`);
     await push(messagesRef, {
@@ -154,31 +160,31 @@ export default function Chat({ route, navigation }) {
     const userTypingRef = ref(database, `users/${user.uid}/typing`);
 
     if (text.trim()) {
+      // User is typing
       await set(userTypingRef, true);
 
+      // Clear previous timeout if it exists
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
 
+      // Set timeout to stop typing after 2 seconds of inactivity
       typingTimeoutRef.current = setTimeout(async () => {
         await set(userTypingRef, false);
+        typingTimeoutRef.current = null;
       }, 2000);
     } else {
+      // User cleared the input, stop typing immediately
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
       await set(userTypingRef, false);
     }
   };
 
   // Listen for other user's typing status
-  useEffect(() => {
-    const otherUserTypingRef = ref(database, `users/${otherUserId}/typing`);
-    const unsubscribeTyping = onValue(otherUserTypingRef, (snapshot) => {
-      setOtherUserTyping(snapshot.val() === true);
-    });
-
-    return () => {
-      unsubscribeTyping();
-    };
-  }, [otherUserId]);
+  // (This is already handled in the first useEffect above)
 
   // Also, when component unmounts or when chat changes, clear typing status
   useEffect(() => {
@@ -655,19 +661,25 @@ export default function Chat({ route, navigation }) {
       </Modal>
 
       {/* MESSAGES */}
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.messagesList}
-        renderItem={renderMessage}
-      />
+      <ImageBackground
+        source={{ uri: backgroundImage }}
+        style={styles.messagesBackground}
+        imageStyle={{ opacity: 0.3 }}
+      >
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.messagesList}
+          renderItem={renderMessage}
+        />
 
-      {otherUserTyping && (
-        <View style={styles.typingContainer}>
-          <TypingIndicator />
-        </View>
-      )}
+        {otherUserTyping && (
+          <View style={styles.typingContainer}>
+            <TypingIndicator />
+          </View>
+        )}
+      </ImageBackground>
 
       {/* INPUT */}
       <View style={styles.inputContainer}>
@@ -712,14 +724,9 @@ export default function Chat({ route, navigation }) {
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity onPress={pickAndUploadImage} style={styles.changeProfilePicBtn}>
-        <Text style={styles.changeProfilePicText}>Change Profile Picture</Text>
-      </TouchableOpacity>
 
-      <Image
-        source={{ uri: profileImage || userData.profileImage }}
-        style={styles.profileImage}
-      />
+
+   
     </View>
   );
 }
@@ -736,6 +743,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "transparent",
+  },
+  messagesBackground: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
   },
   header: {
     flexDirection: "row",
@@ -861,7 +872,7 @@ const styles = StyleSheet.create({
   // TYPING INDICATOR
   typingContainer: {
     position: 'absolute',
-    bottom: 70, // Adjust this based on your input container height
+    bottom: 90, // Adjust this based on your input container height
     left: 0,
     right: 0,
     alignItems: 'flex-start',
